@@ -1,0 +1,19 @@
+# React Dependencies
+Colorr-react/node_modules/
+Colorr-react/dist/
+
+# Local Environment Variables
+.env*.local
+
+# Editor Configurations
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Compiled React Popup Bundles
+dist/assets/
+dist/index.html

@@ -95,7 +95,7 @@ function getLayoutColor(mode, palette, index) {
         s = 65;
         l = 40;
     }
-    return `hsla(${h}, ${s}%, ${l}%, 0.55)`;
+    return `hsl(${h}, ${s}%, ${l}%)`;
 
   } else {
     // Soft pastels — more distinctive, wider hue spread, higher saturation
@@ -145,7 +145,7 @@ function getLayoutColor(mode, palette, index) {
         s = 75;
         l = 84;
     }
-    return `hsla(${h}, ${s}%, ${l}%, 0.6)`;
+    return `hsl(${h}, ${s}%, ${l}%)`;
   }
 }
 

@@ -3,12 +3,13 @@ const state = {
   colorAllActive: false,
   inspectActive: false,
   outlinesActive: false,
+  hideModeActive: false,
   mode: 'soft',
   palette: 'rainbow'
 };
 
 const STYLE_ID = 'colorr-injected-styles';
-const OUTLINE_STYLE_ID = 'colorr-outline-styles';
+const pageKey = window.location.hostname + window.location.pathname;
 
 // Tags that should never be colored or bordered
 const SKIP_TAGS = new Set([
@@ -21,6 +22,29 @@ const BORDER_ONLY_TAGS = new Set([
   'IMG', 'VIDEO', 'AUDIO', 'CANVAS', 'SVG',
   'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'IFRAME'
 ]);
+
+// Load stored hidden elements for the current page path on startup
+chrome.storage.local.get({ hiddenSelectors: {} }, (result) => {
+  const allRules = result.hiddenSelectors;
+  const selectors = allRules[pageKey] || [];
+  if (selectors.length > 0) {
+    applyHiddenStyle(selectors);
+  }
+});
+
+function applyHiddenStyle(selectors) {
+  let style = document.getElementById('colorr-hidden-elements-style');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'colorr-hidden-elements-style';
+    document.head.appendChild(style);
+  }
+  if (selectors.length === 0) {
+    style.remove();
+    return;
+  }
+  style.textContent = selectors.join(',\n') + ' { display: none !important; }';
+}
 
 function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -39,8 +63,47 @@ function injectStyles() {
       box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
       display: none;
     }
+    #colorr-inspect-overlay.hide-mode {
+      background-color: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
+    }
   `;
   document.head.appendChild(style);
+}
+
+// ─── CSS Path Helper ───────────────────────────────────────────────
+
+function getUniqueSelector(el) {
+  if (el.id) {
+    return '#' + el.id;
+  }
+  if (el === document.body) {
+    return 'body';
+  }
+  const path = [];
+  let currentEl = el;
+  while (currentEl && currentEl.nodeType === Node.ELEMENT_NODE) {
+    let selector = currentEl.nodeName.toLowerCase();
+    if (currentEl.id) {
+      selector += '#' + currentEl.id;
+      path.unshift(selector);
+      break;
+    } else {
+      let sib = currentEl.previousElementSibling;
+      let count = 1;
+      while (sib) {
+        if (sib.nodeName.toLowerCase() === currentEl.nodeName.toLowerCase()) {
+          count++;
+        }
+        sib = sib.previousElementSibling;
+      }
+      selector += `:nth-of-type(${count})`;
+    }
+    path.unshift(selector);
+    currentEl = currentEl.parentElement;
+  }
+  return path.join(' > ');
 }
 
 // ─── Color Generation ───────────────────────────────────────────────
@@ -98,7 +161,6 @@ function getLayoutColor(mode, palette, index) {
     return `hsl(${h}, ${s}%, ${l}%)`;
 
   } else {
-    // Soft pastels — more distinctive, wider hue spread, higher saturation
     switch (palette) {
       case 'rainbow':
         h = (index * 137.5 + 15) % 360;
@@ -149,7 +211,6 @@ function getLayoutColor(mode, palette, index) {
   }
 }
 
-// Generate a solid border color (fully opaque, good contrast)
 function getBorderColor(mode, palette, index) {
   let h, s, l;
 
@@ -187,13 +248,11 @@ function applyColorAll() {
   function traverse(node) {
     if (shouldSkip(node)) return;
 
-    // Save original styles
     if (!node.hasAttribute('data-colorr-bg')) {
       node.setAttribute('data-colorr-bg', node.style.backgroundColor || 'none');
       node.setAttribute('data-colorr-transition', node.style.transition || 'none');
     }
 
-    // Skip background on media/form elements but still traverse children
     if (!isBorderOnly(node)) {
       node.style.transition = 'background-color 0.25s ease';
       node.style.backgroundColor = getLayoutColor(state.mode, state.palette, index);
@@ -208,16 +267,15 @@ function applyColorAll() {
   traverse(document.body);
 }
 
-// ─── Outline Mode (colored borders, NO background) ──────────────────
+// ─── Outline Mode ───────────────────────────────────────────────────
 
 function applyOutlines() {
-  removeOutlines(); // Clear any existing
+  removeOutlines();
   let index = 0;
 
   function traverse(node) {
     if (shouldSkip(node)) return;
 
-    // Save original border styles
     if (!node.hasAttribute('data-colorr-border')) {
       node.setAttribute('data-colorr-border', node.style.border || 'none');
       node.setAttribute('data-colorr-outline-transition', node.style.transition || 'none');
@@ -249,7 +307,7 @@ function removeOutlines() {
   });
 }
 
-// ─── Inspect Mode (color element + children on click) ────────────────
+// ─── Inspect Mode ───────────────────────────────────────────────────
 
 function colorElementAndDescendants(element) {
   let index = 0;
@@ -279,7 +337,6 @@ function colorElementAndDescendants(element) {
 // ─── Clear / Reset ──────────────────────────────────────────────────
 
 function clearAll() {
-  // Restore backgrounds
   const coloredElements = document.querySelectorAll('[data-colorr-bg]');
   coloredElements.forEach(el => {
     const origBg = el.getAttribute('data-colorr-bg');
@@ -290,7 +347,6 @@ function clearAll() {
     el.removeAttribute('data-colorr-transition');
   });
 
-  // Restore borders
   removeOutlines();
 
   state.colorAllActive = false;
@@ -299,15 +355,11 @@ function clearAll() {
   const style = document.getElementById(STYLE_ID);
   if (style) style.remove();
 
-  const outlineStyle = document.getElementById(OUTLINE_STYLE_ID);
-  if (outlineStyle) outlineStyle.remove();
-
   const overlay = document.getElementById('colorr-inspect-overlay');
   if (overlay) overlay.remove();
 
-  if (state.inspectActive) {
-    toggleInspect(false);
-  }
+  if (state.inspectActive) toggleInspect(false);
+  if (state.hideModeActive) toggleHideMode(false);
 }
 
 // ─── Toggle Functions ───────────────────────────────────────────────
@@ -316,9 +368,9 @@ function toggleColorAll(activate) {
   state.colorAllActive = activate;
   if (activate) {
     if (state.inspectActive) toggleInspect(false);
+    if (state.hideModeActive) toggleHideMode(false);
     applyColorAll();
   } else {
-    // Clear only backgrounds, keep outlines if active
     const coloredElements = document.querySelectorAll('[data-colorr-bg]');
     coloredElements.forEach(el => {
       const origBg = el.getAttribute('data-colorr-bg');
@@ -340,10 +392,71 @@ function toggleOutlines(activate) {
   }
 }
 
-// ─── Inspector Mouse/Keyboard Handlers ──────────────────────────────
+function toggleInspect(activate) {
+  state.inspectActive = activate;
+  let overlay = document.getElementById('colorr-inspect-overlay');
+
+  if (activate) {
+    injectStyles();
+    if (state.hideModeActive) toggleHideMode(false);
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'colorr-inspect-overlay';
+      document.body.appendChild(overlay);
+    }
+    overlay.classList.remove('hide-mode');
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('click', handleMouseClick, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+  } else {
+    document.removeEventListener('mousemove', handleMouseMove, true);
+    document.removeEventListener('click', handleMouseClick, true);
+    document.removeEventListener('keydown', handleKeyDown, true);
+    if (overlay) overlay.style.display = 'none';
+  }
+}
+
+function toggleHideMode(activate) {
+  state.hideModeActive = activate;
+  let overlay = document.getElementById('colorr-inspect-overlay');
+
+  if (activate) {
+    injectStyles();
+    if (state.inspectActive) toggleInspect(false);
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'colorr-inspect-overlay';
+      document.body.appendChild(overlay);
+    }
+    overlay.classList.add('hide-mode');
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('click', handleHideClick, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+  } else {
+    document.removeEventListener('mousemove', handleMouseMove, true);
+    document.removeEventListener('click', handleHideClick, true);
+    document.removeEventListener('keydown', handleKeyDown, true);
+    if (overlay) {
+      overlay.classList.remove('hide-mode');
+      overlay.style.display = 'none';
+    }
+  }
+}
+
+function clearHidden() {
+  chrome.storage.local.get({ hiddenSelectors: {} }, (result) => {
+    const allRules = result.hiddenSelectors;
+    delete allRules[pageKey];
+    chrome.storage.local.set({ hiddenSelectors: allRules }, () => {
+      applyHiddenStyle([]);
+    });
+  });
+}
+
+// ─── Mouse/Keyboard Handlers ────────────────────────────────────────
 
 function handleMouseMove(e) {
-  if (!state.inspectActive) return;
+  if (!state.inspectActive && !state.hideModeActive) return;
 
   const target = e.target;
   if (!target || shouldSkip(target) || target.tagName === 'HTML' || target.tagName === 'BODY') {
@@ -379,32 +492,38 @@ function handleMouseClick(e) {
   chrome.runtime.sendMessage({ action: 'stateUpdated', state }).catch(() => {});
 }
 
-function handleKeyDown(e) {
-  if (e.key === 'Escape') {
-    toggleInspect(false);
-    chrome.runtime.sendMessage({ action: 'stateUpdated', state }).catch(() => {});
-  }
+function handleHideClick(e) {
+  if (!state.hideModeActive) return;
+
+  const target = e.target;
+  if (!target || target.id === 'colorr-inspect-overlay') return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const selector = getUniqueSelector(target);
+
+  chrome.storage.local.get({ hiddenSelectors: {} }, (result) => {
+    const allRules = result.hiddenSelectors;
+    if (!allRules[pageKey]) allRules[pageKey] = [];
+    if (!allRules[pageKey].includes(selector)) {
+      allRules[pageKey].push(selector);
+      chrome.storage.local.set({ hiddenSelectors: allRules }, () => {
+        applyHiddenStyle(allRules[pageKey]);
+        const overlay = document.getElementById('colorr-inspect-overlay');
+        if (overlay) overlay.style.display = 'none';
+      });
+    }
+  });
+
+  chrome.runtime.sendMessage({ action: 'stateUpdated', state }).catch(() => {});
 }
 
-function toggleInspect(activate) {
-  state.inspectActive = activate;
-  let overlay = document.getElementById('colorr-inspect-overlay');
-
-  if (activate) {
-    injectStyles();
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'colorr-inspect-overlay';
-      document.body.appendChild(overlay);
-    }
-    document.addEventListener('mousemove', handleMouseMove, true);
-    document.addEventListener('click', handleMouseClick, true);
-    document.addEventListener('keydown', handleKeyDown, true);
-  } else {
-    document.removeEventListener('mousemove', handleMouseMove, true);
-    document.removeEventListener('click', handleMouseClick, true);
-    document.removeEventListener('keydown', handleKeyDown, true);
-    if (overlay) overlay.style.display = 'none';
+function handleKeyDown(e) {
+  if (e.key === 'Escape') {
+    if (state.inspectActive) toggleInspect(false);
+    if (state.hideModeActive) toggleHideMode(false);
+    chrome.runtime.sendMessage({ action: 'stateUpdated', state }).catch(() => {});
   }
 }
 
@@ -436,8 +555,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'toggleHideMode') {
+    toggleHideMode(!state.hideModeActive);
+    sendResponse(state);
+    return true;
+  }
+
   if (request.action === 'clear-all' || request.action === 'clearAll') {
     clearAll();
+    sendResponse(state);
+    return true;
+  }
+
+  if (request.action === 'clearHidden') {
+    clearHidden();
     sendResponse(state);
     return true;
   }

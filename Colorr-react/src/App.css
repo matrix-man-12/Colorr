@@ -354,22 +354,44 @@ kbd {
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
 }
 
-/* Reset Button */
-.reset-button {
+/* Control button active states */
+.control-btn.active-danger {
+  background: linear-gradient(135deg, #ef4444, #f43f5e);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.22);
+}
+
+/* Actions Footer */
+.actions-footer-section {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.reset-button, .unhide-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.15);
+  gap: 6px;
+  padding: 10px 4px;
   border-radius: 10px;
-  color: var(--danger);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
+  box-sizing: border-box;
+}
+
+.reset-button {
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: var(--danger);
 }
 
 .reset-button:hover {
@@ -379,7 +401,21 @@ kbd {
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
+.unhide-button {
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  color: var(--accent-indigo);
+}
+
+.unhide-button:hover {
+  background: var(--accent-indigo);
+  border-color: var(--accent-indigo);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
 .reset-icon {
   width: 12px;
   height: 12px;
 }
+

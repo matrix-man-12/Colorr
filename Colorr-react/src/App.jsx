@@ -6,9 +6,10 @@ const isExtension = typeof chrome !== 'undefined' && chrome.tabs !== undefined;
 function App() {
   const [tabId, setTabId] = useState(null);
   const [state, setState] = useState({
-    colorAllActive: true, // Default to active
+    colorAllActive: true,
     inspectActive: false,
     outlinesActive: false,
+    hideModeActive: false,
     mode: 'soft',
     palette: 'rainbow'
   });
@@ -24,7 +25,7 @@ function App() {
     });
   }, [tabId]);
 
-  // Initialize and auto-activate Color All on first open
+  // Initialize and load state
   useEffect(() => {
     if (!isExtension) return;
 
@@ -67,8 +68,16 @@ function App() {
     sendCommand('toggleOutlines');
   };
 
+  const handleToggleHideMode = () => {
+    sendCommand('toggleHideMode');
+  };
+
   const handleClearAll = () => {
     sendCommand('clearAll');
+  };
+
+  const handleClearHidden = () => {
+    sendCommand('clearHidden');
   };
 
   const handleSelectPalette = (palette) => {
@@ -102,7 +111,7 @@ function App() {
     );
   }
 
-  // Soft Pastels — 6 palettes with 5 preview colors each
+  // Soft Pastels
   const softPalettes = [
     { id: 'rainbow', name: 'Soft Rainbow', colors: ['#ffb3ba', '#ffffba', '#baffc9', '#bae1ff', '#e8c4ff'] },
     { id: 'warm', name: 'Warm Pastels', colors: ['#ff9a9e', '#fecfef', '#ffd1a4', '#ffe8a1', '#ffc3a0'] },
@@ -112,7 +121,7 @@ function App() {
     { id: 'sunset', name: 'Sunset Peach', colors: ['#ff9a76', '#ffbf87', '#ffc3a0', '#ffafbd', '#ffd1a4'] }
   ];
 
-  // Vibrant & Dark — replaced black-like palettes with vivid alternatives
+  // Vibrant & Dark
   const darkPalettes = [
     { id: 'rainbow-dark', name: 'Neon Rainbow', colors: ['#818cf8', '#f472b6', '#2dd4bf', '#fbbf24', '#a78bfa'] },
     { id: 'cyberpunk', name: 'Cyberpunk', colors: ['#ec4899', '#8b5cf6', '#06b6d4', '#fbbf24', '#14b8a6'] },
@@ -177,6 +186,18 @@ function App() {
               <line x1="3" y1="15" x2="21" y2="15"/>
             </svg>
             <span>Borders</span>
+          </button>
+
+          <button 
+            className={`control-btn ${state.hideModeActive ? 'active-danger' : ''}`}
+            onClick={handleToggleHideMode}
+            title="Hide Selected Element (Click to Hide)"
+          >
+            <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+            <span>Hide</span>
           </button>
         </section>
 
@@ -251,25 +272,34 @@ function App() {
                 <kbd>Ctrl+Shift+Space</kbd>
               </div>
               <div className="shortcut-item">
-                <span>Clear Layout</span>
+                <span>Clear Layout Colors</span>
                 <kbd>Ctrl+Shift+K</kbd>
               </div>
               <div className="shortcut-item">
-                <span>Cancel Inspect</span>
+                <span>Cancel Inspect/Hide</span>
                 <kbd>Esc</kbd>
               </div>
             </div>
           )}
         </section>
 
-        {/* Reset Button */}
-        <button className="reset-button" onClick={handleClearAll}>
-          <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <polyline points="3 3 3 8 8 8" />
-          </svg>
-          Reset All
-        </button>
+        {/* Action Buttons Footer */}
+        <section className="actions-footer-section">
+          <button className="reset-button flex-1" onClick={handleClearAll}>
+            <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <polyline points="3 3 3 8 8 8" />
+            </svg>
+            Reset Colors
+          </button>
+          <button className="unhide-button flex-1" onClick={handleClearHidden}>
+            <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            Unhide All
+          </button>
+        </section>
       </main>
     </div>
   );

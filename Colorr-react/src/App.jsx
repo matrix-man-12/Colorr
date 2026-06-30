@@ -9,12 +9,13 @@ function App() {
     colorAllActive: false,
     inspectActive: false,
     outlinesActive: false,
+    mode: 'soft',
     palette: 'rainbow'
   });
   const [unsupportedPage, setUnsupportedPage] = useState(!isExtension);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  // Initialize and get the current active tab's state
+  // Initialize state and communicate with tab
   useEffect(() => {
     if (!isExtension) return;
 
@@ -23,10 +24,8 @@ function App() {
       if (activeTab && activeTab.id) {
         setTabId(activeTab.id);
 
-        // Check if we can inject and talk to the content script
         chrome.tabs.sendMessage(activeTab.id, { action: 'getState' }, (response) => {
           if (chrome.runtime.lastError) {
-            // Content script not responding (unsupported URL or page loading)
             setUnsupportedPage(true);
           } else if (response) {
             setState(response);
@@ -37,7 +36,7 @@ function App() {
       }
     });
 
-    // Listen for state changes (e.g. Escape key in inspect mode)
+    // Listen for events sent from content script (e.g. inspector cancel via Esc)
     const handleMessage = (request) => {
       if (request.action === 'stateUpdated' && request.state) {
         setState(request.state);
@@ -48,7 +47,6 @@ function App() {
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
   }, []);
 
-  // Send control commands to content script
   const sendCommand = (action, payload = {}) => {
     if (!tabId || typeof chrome === 'undefined') return;
 
@@ -60,7 +58,7 @@ function App() {
   };
 
   const handleToggleColorAll = () => {
-    sendCommand('toggleColorAll', { palette: state.palette });
+    sendCommand('toggleColorAll', { palette: state.palette, mode: state.mode });
   };
 
   const handleToggleInspect = () => {
@@ -76,7 +74,12 @@ function App() {
   };
 
   const handleSelectPalette = (palette) => {
-    sendCommand('setPalette', { palette });
+    sendCommand('setPalette', { palette, mode: state.mode });
+  };
+
+  const handleToggleMode = (mode) => {
+    const defaultPalette = mode === 'dark' ? 'rainbow-dark' : 'rainbow';
+    sendCommand('setMode', { mode, palette: defaultPalette });
   };
 
   if (unsupportedPage) {
@@ -85,7 +88,7 @@ function App() {
         <header className="colorr-header">
           <div className="logo-badge">C</div>
           <h1>Colorr</h1>
-          <p className="subtitle">Pastel Layout Visualizer</p>
+          <p className="subtitle">Layout Visualizer</p>
         </header>
         <div className="fallback-card">
           <svg className="fallback-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -94,15 +97,33 @@ function App() {
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           <h3>Unsupported Page</h3>
-          <p>Colorr cannot run on internal browser pages, settings, or Chrome Web Store pages.</p>
-          <p className="hint">Please navigate to any regular website (e.g., wikipedia.org or your local developer page) and open the extension again.</p>
+          <p>Colorr cannot run on internal browser settings or store pages.</p>
+          <p className="hint">Please navigate to any regular website (e.g. wikipedia.org or your local developer page) and open the extension again.</p>
         </div>
-        <footer className="colorr-footer">
-          <span>Colorr Extension v1.0</span>
-        </footer>
       </div>
     );
   }
+
+  // Define Soft and Dark palettes
+  const softPalettes = [
+    { id: 'rainbow', name: 'Soft Rainbow', colors: ['#ffb3ba', '#baffc9', '#bae1ff'] },
+    { id: 'warm', name: 'Warm Pastels', colors: ['#ffb3ba', '#ffdfba', '#ffffba'] },
+    { id: 'cool', name: 'Cool Pastels', colors: ['#baffc9', '#bae1ff', '#e8c4ff'] },
+    { id: 'forest', name: 'Forest Sage', colors: ['#c2f0c2', '#d9f2d9', '#e6f7e6'] },
+    { id: 'sunset', name: 'Sunset Peach', colors: ['#ffc3a0', '#ffafbd', '#ffc0cb'] },
+    { id: 'monochrome', name: 'Monochrome', colors: ['#cfd8dc', '#eceff1', '#f5f7f8'] }
+  ];
+
+  const darkPalettes = [
+    { id: 'rainbow-dark', name: 'Neon Rainbow', colors: ['#818cf8', '#f472b6', '#2dd4bf'] },
+    { id: 'cyberpunk', name: 'Cyberpunk', colors: ['#ec4899', '#4f46e5', '#06b6d4'] },
+    { id: 'ocean', name: 'Deep Ocean', colors: ['#1e3a8a', '#1d4ed8', '#0d9488'] },
+    { id: 'forest-dark', name: 'Forest Canopy', colors: ['#064e3b', '#047857', '#14532d'] },
+    { id: 'sunset-dark', name: 'Vibrant Sunset', colors: ['#7c2d12', '#9a3412', '#581c87'] },
+    { id: 'monochrome-dark', name: 'Midnight Slate', colors: ['#0f172a', '#1e293b', '#334155'] }
+  ];
+
+  const activePalettes = state.mode === 'dark' ? darkPalettes : softPalettes;
 
   return (
     <div className="colorr-container">
@@ -110,114 +131,95 @@ function App() {
         <div className="logo-badge">C</div>
         <div>
           <h1>Colorr</h1>
-          <p className="subtitle">Pastel Layout Visualizer</p>
+          <p className="subtitle">Layout Visualizer</p>
         </div>
       </header>
 
       <main className="colorr-main">
-        {/* Toggle Switches */}
-        <section className="control-section">
-          <div className="control-row">
-            <div className="control-info">
-              <span className="control-title">Color All Elements</span>
-              <span className="control-desc">Applies pastels to all backgrounds</span>
-            </div>
-            <label className="switch">
-              <input 
-                type="checkbox" 
-                checked={state.colorAllActive} 
-                onChange={handleToggleColorAll} 
-              />
-              <span className="slider round"></span>
-            </label>
-          </div>
+        {/* Compact Toggle Button Group */}
+        <section className="compact-controls-section">
+          <button 
+            className={`control-btn ${state.colorAllActive ? 'active' : ''}`}
+            onClick={handleToggleColorAll}
+            title="Color All Elements (Ctrl+Shift+Period)"
+          >
+            <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-4-4-4-4-2 2.4-4 4-3 3.5-3 5.5a7 7 0 0 0 7 7z"/>
+            </svg>
+            <span>Color All</span>
+          </button>
 
-          <div className="control-row">
-            <div className="control-info">
-              <span className="control-title">Inspect & Color</span>
-              <span className="control-desc">Hover to select, click to color</span>
-            </div>
-            <label className="switch">
-              <input 
-                type="checkbox" 
-                checked={state.inspectActive} 
-                onChange={handleToggleInspect} 
-              />
-              <span className="slider round"></span>
-            </label>
-          </div>
+          <button 
+            className={`control-btn ${state.inspectActive ? 'active' : ''}`}
+            onClick={handleToggleInspect}
+            title="Inspect & Color (Ctrl+Shift+Comma)"
+          >
+            <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="3"/>
+              <line x1="12" y1="1" x2="12" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="1" y1="12" x2="3" y2="12"/>
+              <line x1="21" y1="12" x2="23" y2="12"/>
+            </svg>
+            <span>Inspect</span>
+          </button>
 
-          <div className="control-row">
-            <div className="control-info">
-              <span className="control-title">Outline Mode</span>
-              <span className="control-desc">Dashed boundaries on layouts</span>
-            </div>
-            <label className="switch">
-              <input 
-                type="checkbox" 
-                checked={state.outlinesActive} 
-                onChange={handleToggleOutlines} 
-              />
-              <span className="slider round"></span>
-            </label>
+          <button 
+            className={`control-btn ${state.outlinesActive ? 'active' : ''}`}
+            onClick={handleToggleOutlines}
+            title="Outline Mode (Ctrl+Shift+Space)"
+          >
+            <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3"/>
+              <line x1="9" y1="3" x2="9" y2="21" strokeDasharray="3 3"/>
+              <line x1="15" y1="3" x2="15" y2="21" strokeDasharray="3 3"/>
+              <line x1="3" y1="9" x2="21" y2="9" strokeDasharray="3 3"/>
+              <line x1="3" y1="15" x2="21" y2="15" strokeDasharray="3 3"/>
+            </svg>
+            <span>Outlines</span>
+          </button>
+        </section>
+
+        {/* Sliding Segmented Mode Selector */}
+        <section className="mode-toggle-section">
+          <div className="mode-segmented-control">
+            <button 
+              className={`mode-tab-btn ${state.mode === 'soft' ? 'active' : ''}`}
+              onClick={() => handleToggleMode('soft')}
+            >
+              Soft Pastels
+            </button>
+            <button 
+              className={`mode-tab-btn ${state.mode === 'dark' ? 'active' : ''}`}
+              onClick={() => handleToggleMode('dark')}
+            >
+              Vibrant & Dark
+            </button>
           </div>
         </section>
 
-        {/* Palette Selector */}
+        {/* Dynamic Palette Grid */}
         <section className="palette-section">
-          <h3>Pastel Mood Palette</h3>
           <div className="palette-grid">
-            <button 
-              className={`palette-card rainbow ${state.palette === 'rainbow' ? 'active' : ''}`}
-              onClick={() => handleSelectPalette('rainbow')}
-            >
-              <div className="palette-preview">
-                <span style={{ backgroundColor: '#ffb3ba' }}></span>
-                <span style={{ backgroundColor: '#baffc9' }}></span>
-                <span style={{ backgroundColor: '#bae1ff' }}></span>
-              </div>
-              <span>Soft Rainbow</span>
-            </button>
-
-            <button 
-              className={`palette-card warm ${state.palette === 'warm' ? 'active' : ''}`}
-              onClick={() => handleSelectPalette('warm')}
-            >
-              <div className="palette-preview">
-                <span style={{ backgroundColor: '#ffb3ba' }}></span>
-                <span style={{ backgroundColor: '#ffdfba' }}></span>
-                <span style={{ backgroundColor: '#ffffba' }}></span>
-              </div>
-              <span>Warm Pastels</span>
-            </button>
-
-            <button 
-              className={`palette-card cool ${state.palette === 'cool' ? 'active' : ''}`}
-              onClick={() => handleSelectPalette('cool')}
-            >
-              <div className="palette-preview">
-                <span style={{ backgroundColor: '#baffc9' }}></span>
-                <span style={{ backgroundColor: '#bae1ff' }}></span>
-                <span style={{ backgroundColor: '#e8c4ff' }}></span>
-              </div>
-              <span>Cool Pastels</span>
-            </button>
-
-            <button 
-              className={`palette-card monochrome ${state.palette === 'monochrome' ? 'active' : ''}`}
-              onClick={() => handleSelectPalette('monochrome')}
-            >
-              <div className="palette-preview">
-                <span style={{ backgroundColor: '#cfd8dc' }}></span>
-                <span style={{ backgroundColor: '#eceff1' }}></span>
-                <span style={{ backgroundColor: '#f5f7f8' }}></span>
-              </div>
-              <span>Monochrome</span>
-            </button>
+            {activePalettes.map((p) => (
+              <button 
+                key={p.id}
+                className={`palette-card ${state.palette === p.id ? 'active' : ''}`}
+                onClick={() => handleSelectPalette(p.id)}
+              >
+                <div className="palette-preview">
+                  {p.colors.map((c, i) => (
+                    <span key={i} style={{ backgroundColor: c }}></span>
+                  ))}
+                </div>
+                <span>{p.name}</span>
+              </button>
+            ))}
           </div>
         </section>
 
-        {/* Shortcuts Collapsible */}
+        {/* Shortcuts Accordion */}
         <section className="shortcuts-section">
           <button 
             className="shortcuts-toggle"
@@ -239,19 +241,19 @@ function App() {
             <div className="shortcuts-list">
               <div className="shortcut-item">
                 <span>Color All Elements</span>
-                <kbd>Alt + Shift + A</kbd>
+                <kbd>Ctrl+Shift+.</kbd>
               </div>
               <div className="shortcut-item">
                 <span>Inspect & Color</span>
-                <kbd>Alt + Shift + I</kbd>
+                <kbd>Ctrl+Shift+,</kbd>
               </div>
               <div className="shortcut-item">
                 <span>Outline Mode</span>
-                <kbd>Alt + Shift + O</kbd>
+                <kbd>Ctrl+Shift+Space</kbd>
               </div>
               <div className="shortcut-item">
-                <span>Clear & Reset Page</span>
-                <kbd>Alt + Shift + C</kbd>
+                <span>Clear Layout</span>
+                <kbd>Ctrl+Shift+K</kbd>
               </div>
               <div className="shortcut-item">
                 <span>Cancel Inspect (On Page)</span>
@@ -261,7 +263,7 @@ function App() {
           )}
         </section>
 
-        {/* Clear Button */}
+        {/* Action Buttons */}
         <button className="reset-button" onClick={handleClearAll}>
           <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -270,10 +272,6 @@ function App() {
           Reset Layout Styles
         </button>
       </main>
-
-      <footer className="colorr-footer">
-        <span>Colorr Extension v1.0</span>
-      </footer>
     </div>
   );
 }

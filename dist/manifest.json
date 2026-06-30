@@ -5,7 +5,8 @@
   "description": "Automatically applies beautiful pastel/light layouts to HTML elements to make layout visualization easy.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "scripting"
   ],
   "action": {
     "default_popup": "index.html",

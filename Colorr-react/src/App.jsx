@@ -25,8 +25,8 @@ function App() {
     });
   }, [tabId]);
 
-  // Initialize and load state
-  useEffect(() => {
+  // Checks connection to the content script, dynamically injects it if disconnected on valid web pages
+  const checkConnection = useCallback(() => {
     if (!isExtension) return;
 
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -34,17 +34,51 @@ function App() {
       if (activeTab && activeTab.id) {
         setTabId(activeTab.id);
 
+        // Attempt to message the active tab content script
         chrome.tabs.sendMessage(activeTab.id, { action: 'getState' }, (response) => {
           if (chrome.runtime.lastError) {
-            setUnsupportedPage(true);
+            // Connection failed. Check if we can inject script dynamically
+            const url = activeTab.url || '';
+            const isInjectable = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://');
+
+            if (isInjectable) {
+              chrome.scripting.executeScript({
+                target: { tabId: activeTab.id },
+                files: ['content.js']
+              }, () => {
+                if (chrome.runtime.lastError) {
+                  setUnsupportedPage(true);
+                } else {
+                  // Script injected successfully. Fetch its state.
+                  chrome.tabs.sendMessage(activeTab.id, { action: 'getState' }, (newResponse) => {
+                    if (!chrome.runtime.lastError && newResponse) {
+                      setState(newResponse);
+                      setUnsupportedPage(false);
+                    } else {
+                      setUnsupportedPage(true);
+                    }
+                  });
+                }
+              });
+            } else {
+              setUnsupportedPage(true);
+            }
           } else if (response) {
             setState(response);
+            setUnsupportedPage(false);
           }
         });
       } else {
         setUnsupportedPage(true);
       }
     });
+  }, []);
+
+  // Initialize state and check connection on mount
+  useEffect(() => {
+    if (!isExtension) return;
+
+    checkConnection();
 
     const handleMessage = (request) => {
       if (request.action === 'stateUpdated' && request.state) {
@@ -54,7 +88,7 @@ function App() {
 
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
-  }, []);
+  }, [checkConnection]);
 
   const handleToggleColorAll = () => {
     sendCommand('toggleColorAll', { palette: state.palette, mode: state.mode });
@@ -105,7 +139,14 @@ function App() {
           </svg>
           <h3>Unsupported Page</h3>
           <p>Colorr cannot run on internal browser settings or store pages.</p>
-          <p className="hint">Please navigate to any regular website and open the extension again.</p>
+          <p className="hint">If this is a normal webpage, please click below to refresh the connection.</p>
+          <button className="refresh-conn-btn" onClick={checkConnection}>
+            <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 4v6h-6"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Refresh Connection
+          </button>
         </div>
       </div>
     );

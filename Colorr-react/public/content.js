@@ -3,13 +3,25 @@ const state = {
   colorAllActive: false,
   inspectActive: false,
   outlinesActive: false,
-  mode: 'soft', // 'soft' or 'dark'
-  palette: 'rainbow' // current palette identifier
+  mode: 'soft',
+  palette: 'rainbow'
 };
 
 const STYLE_ID = 'colorr-injected-styles';
+const OUTLINE_STYLE_ID = 'colorr-outline-styles';
 
-// Injects standard extension support styling
+// Tags that should never be colored or bordered
+const SKIP_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT',
+  'HEAD', 'HTML', 'BR', 'HR', 'WBR'
+]);
+
+// Tags where we only apply borders (outlines mode), never backgrounds
+const BORDER_ONLY_TAGS = new Set([
+  'IMG', 'VIDEO', 'AUDIO', 'CANVAS', 'SVG',
+  'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'IFRAME'
+]);
+
 function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
@@ -18,277 +30,332 @@ function injectStyles() {
     #colorr-inspect-overlay {
       position: absolute;
       pointer-events: none;
-      background-color: rgba(99, 102, 241, 0.25);
+      background-color: rgba(99, 102, 241, 0.22);
       border: 2px solid #6366f1;
-      border-radius: 6px;
+      border-radius: 4px;
       z-index: 2147483647;
-      transition: all 0.1s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: all 0.08s cubic-bezier(0.16, 1, 0.3, 1);
       box-sizing: border-box;
-      box-shadow: 0 0 16px rgba(99, 102, 241, 0.35);
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
       display: none;
-    }
-    body.colorr-show-outlines [data-colorr-bg] {
-      outline: 1.5px dashed rgba(99, 102, 241, 0.45) !important;
-      outline-offset: -1.5px;
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3) !important;
     }
   `;
   document.head.appendChild(style);
 }
 
-// Generate premium layout colors with semi-transparency for legibility
+// ─── Color Generation ───────────────────────────────────────────────
+
 function getLayoutColor(mode, palette, index) {
-  let h, s, l, a;
-  
+  let h, s, l;
+
   if (mode === 'dark') {
-    a = 0.55; // Semi-transparent overlay to blend with original page backgrounds
     switch (palette) {
       case 'rainbow-dark':
-        h = (index * 137.5) % 360;
-        s = 65 + (index % 10);
-        l = 25 + (index % 8);
+        h = (index * 137.5 + 10) % 360;
+        s = 70 + (index % 15);
+        l = 38 + (index % 12);
         break;
       case 'cyberpunk': {
-        const cyberHues = [320, 185, 275, 55, 300];
-        h = cyberHues[index % cyberHues.length];
-        s = 85;
-        l = 30 + (index % 6);
+        const cyberHues = [310, 330, 185, 265, 290, 195, 50, 170];
+        h = cyberHues[index % cyberHues.length] + (index % 5);
+        s = 78 + (index % 12);
+        l = 40 + (index % 10);
         break;
       }
-      case 'ocean':
-        h = 195 + (index % 5) * 12;
-        s = 62 + (index % 8);
-        l = 22 + (index % 6);
-        break;
-      case 'forest-dark':
-        h = 95 + (index % 4) * 15;
-        s = 48 + (index % 10);
-        l = 18 + (index % 6);
-        break;
       case 'sunset-dark': {
-        const sunsetHues = [340, 355, 12, 28, 42];
-        h = sunsetHues[index % sunsetHues.length];
-        s = 70 + (index % 8);
-        l = 24 + (index % 6);
+        const sunsetDarkHues = [0, 10, 20, 35, 50, 340, 355, 280];
+        h = sunsetDarkHues[index % sunsetDarkHues.length] + (index % 6);
+        s = 72 + (index % 10);
+        l = 38 + (index % 10);
         break;
       }
-      case 'monochrome-dark':
-        h = 215;
-        s = 12 + (index % 8);
-        l = 16 + (index % 5);
+      case 'lavender': {
+        const lavHues = [260, 275, 290, 310, 240, 220, 330, 250];
+        h = lavHues[index % lavHues.length] + (index % 8);
+        s = 55 + (index % 15);
+        l = 42 + (index % 10);
         break;
+      }
+      case 'coral': {
+        const coralHues = [350, 5, 15, 25, 340, 330, 40, 355];
+        h = coralHues[index % coralHues.length] + (index % 6);
+        s = 72 + (index % 12);
+        l = 45 + (index % 10);
+        break;
+      }
+      case 'aurora': {
+        const auroraHues = [120, 160, 200, 280, 310, 80, 140, 240];
+        h = auroraHues[index % auroraHues.length] + (index % 10);
+        s = 60 + (index % 15);
+        l = 40 + (index % 12);
+        break;
+      }
       default:
-        h = (index * 45) % 360;
-        s = 60;
-        l = 25;
+        h = (index * 75) % 360;
+        s = 65;
+        l = 40;
     }
+    return `hsla(${h}, ${s}%, ${l}%, 0.55)`;
+
   } else {
-    // Soft pastels mode
-    a = 0.35; // Light tint blending for soft colors
+    // Soft pastels — more distinctive, wider hue spread, higher saturation
     switch (palette) {
       case 'rainbow':
-        h = (index * 137.5) % 360;
-        s = 72 + (index % 8);
-        l = 88 + (index % 6);
+        h = (index * 137.5 + 15) % 360;
+        s = 78 + (index % 15);
+        l = 82 + (index % 8);
         break;
       case 'warm': {
-        const warmHues = [0, 15, 30, 45, 60, 320, 335, 350];
-        h = warmHues[index % warmHues.length];
-        s = 74 + (index % 6);
-        l = 87 + (index % 5);
+        const warmHues = [0, 12, 24, 36, 48, 60, 330, 345, 355, 310];
+        h = warmHues[index % warmHues.length] + (index % 8);
+        s = 80 + (index % 12);
+        l = 80 + (index % 8);
         break;
       }
       case 'cool': {
-        const coolHues = [100, 120, 150, 180, 200, 220, 240, 260, 280];
-        h = coolHues[index % coolHues.length];
-        s = 68 + (index % 6);
-        l = 89 + (index % 5);
+        const coolHues = [140, 160, 180, 200, 220, 240, 260, 280, 300, 120];
+        h = coolHues[index % coolHues.length] + (index % 10);
+        s = 65 + (index % 15);
+        l = 82 + (index % 8);
         break;
       }
-      case 'monochrome':
-        h = 210;
-        s = 10 + (index % 10);
-        l = 92 + (index % 4);
+      case 'berry': {
+        const berryHues = [310, 330, 350, 280, 290, 260, 340, 320, 300, 270];
+        h = berryHues[index % berryHues.length] + (index % 6);
+        s = 60 + (index % 18);
+        l = 82 + (index % 8);
         break;
-      case 'forest':
-        h = 80 + (index % 5) * 15;
-        s = 40 + (index % 8);
-        l = 87 + (index % 5);
+      }
+      case 'tropical': {
+        const tropHues = [30, 50, 70, 160, 180, 330, 10, 45, 170, 350];
+        h = tropHues[index % tropHues.length] + (index % 8);
+        s = 75 + (index % 15);
+        l = 78 + (index % 10);
         break;
+      }
       case 'sunset': {
-        const softSunsetHues = [15, 25, 35, 45, 55, 345];
-        h = softSunsetHues[index % softSunsetHues.length];
-        s = 68 + (index % 6);
-        l = 89 + (index % 4);
+        const softSunsetHues = [5, 15, 30, 45, 55, 345, 335, 20, 40, 350];
+        h = softSunsetHues[index % softSunsetHues.length] + (index % 6);
+        s = 82 + (index % 10);
+        l = 80 + (index % 8);
         break;
       }
       default:
-        h = (index * 45) % 360;
-        s = 70;
-        l = 90;
+        h = (index * 55) % 360;
+        s = 75;
+        l = 84;
     }
+    return `hsla(${h}, ${s}%, ${l}%, 0.6)`;
   }
-  
-  return `hsla(${h}, ${s}%, ${l}%, ${a})`;
 }
 
-// Determines if an element should be excluded from coloring to prevent layout breakage
-function shouldSkipElement(node) {
+// Generate a solid border color (fully opaque, good contrast)
+function getBorderColor(mode, palette, index) {
+  let h, s, l;
+
+  if (mode === 'dark') {
+    h = (index * 137.5 + 20) % 360;
+    s = 70 + (index % 15);
+    l = 50 + (index % 10);
+  } else {
+    h = (index * 137.5 + 20) % 360;
+    s = 65 + (index % 15);
+    l = 55 + (index % 10);
+  }
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
+// ─── Element Filtering ──────────────────────────────────────────────
+
+function shouldSkip(node) {
   if (node.nodeType !== Node.ELEMENT_NODE) return true;
-  
-  const tagName = node.tagName;
-  const skipTags = [
-    'SCRIPT', 'STYLE', 'SVG', 'PATH', 'IFRAME', 'NOSCRIPT', 
-    'CANVAS', 'HTML', 'HEAD', 'IMG', 'INPUT', 'TEXTAREA', 
-    'SELECT', 'OPTION', 'BUTTON', 'AUDIO', 'VIDEO'
-  ];
-  if (skipTags.includes(tagName)) return true;
+  if (SKIP_TAGS.has(node.tagName)) return true;
   if (node.id === 'colorr-inspect-overlay') return true;
-  
-  // Skip absolute/fixed elements that do not contain visible text content (e.g. transparent overlays)
-  const computed = window.getComputedStyle(node);
-  const isAbsolute = computed.position === 'absolute' || computed.position === 'fixed';
-  
-  const hasDirectText = Array.from(node.childNodes).some(child => 
-    child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== ''
-  );
-  
-  if (isAbsolute && !hasDirectText && node.children.length === 0) {
-    return true;
-  }
-  
-  // Skip zero size elements
-  const rect = node.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
-    return true;
-  }
-  
   return false;
 }
 
-// Traverse DOM and color layout
+function isBorderOnly(node) {
+  return BORDER_ONLY_TAGS.has(node.tagName);
+}
+
+// ─── Color All Mode ─────────────────────────────────────────────────
+
 function applyColorAll() {
   injectStyles();
   let index = 0;
-  
+
   function traverse(node) {
-    if (shouldSkipElement(node)) return;
-    
-    // Save original styles if not done already
+    if (shouldSkip(node)) return;
+
+    // Save original styles
     if (!node.hasAttribute('data-colorr-bg')) {
-      const currentBg = node.style.backgroundColor;
-      const currentTransition = node.style.transition;
-      node.setAttribute('data-colorr-bg', currentBg || 'none');
-      node.setAttribute('data-colorr-transition', currentTransition || 'none');
+      node.setAttribute('data-colorr-bg', node.style.backgroundColor || 'none');
+      node.setAttribute('data-colorr-transition', node.style.transition || 'none');
     }
-    
-    node.style.transition = 'background-color 0.3s ease';
-    node.style.backgroundColor = getLayoutColor(state.mode, state.palette, index++);
-    
+
+    // Skip background on media/form elements but still traverse children
+    if (!isBorderOnly(node)) {
+      node.style.transition = 'background-color 0.25s ease';
+      node.style.backgroundColor = getLayoutColor(state.mode, state.palette, index);
+    }
+    index++;
+
     for (const child of node.children) {
       traverse(child);
     }
   }
-  
+
   traverse(document.body);
 }
 
-// Color specific element and descendants
+// ─── Outline Mode (colored borders, NO background) ──────────────────
+
+function applyOutlines() {
+  removeOutlines(); // Clear any existing
+  let index = 0;
+
+  function traverse(node) {
+    if (shouldSkip(node)) return;
+
+    // Save original border styles
+    if (!node.hasAttribute('data-colorr-border')) {
+      node.setAttribute('data-colorr-border', node.style.border || 'none');
+      node.setAttribute('data-colorr-outline-transition', node.style.transition || 'none');
+    }
+
+    const color = getBorderColor(state.mode, state.palette, index++);
+    node.style.transition = 'border 0.25s ease';
+    node.style.border = `2px solid ${color}`;
+
+    for (const child of node.children) {
+      traverse(child);
+    }
+  }
+
+  traverse(document.body);
+}
+
+function removeOutlines() {
+  const bordered = document.querySelectorAll('[data-colorr-border]');
+  bordered.forEach(el => {
+    const origBorder = el.getAttribute('data-colorr-border');
+    const origTransition = el.getAttribute('data-colorr-outline-transition');
+
+    el.style.border = origBorder === 'none' ? '' : origBorder;
+    el.style.transition = origTransition === 'none' ? '' : origTransition;
+
+    el.removeAttribute('data-colorr-border');
+    el.removeAttribute('data-colorr-outline-transition');
+  });
+}
+
+// ─── Inspect Mode (color element + children on click) ────────────────
+
 function colorElementAndDescendants(element) {
   let index = 0;
-  
+
   function colorNode(node) {
-    if (shouldSkipElement(node)) return;
-    
+    if (shouldSkip(node)) return;
+
     if (!node.hasAttribute('data-colorr-bg')) {
-      const currentBg = node.style.backgroundColor;
-      const currentTransition = node.style.transition;
-      node.setAttribute('data-colorr-bg', currentBg || 'none');
-      node.setAttribute('data-colorr-transition', currentTransition || 'none');
+      node.setAttribute('data-colorr-bg', node.style.backgroundColor || 'none');
+      node.setAttribute('data-colorr-transition', node.style.transition || 'none');
     }
-    
-    node.style.transition = 'background-color 0.3s ease';
-    node.style.backgroundColor = getLayoutColor(state.mode, state.palette, index++);
-    
+
+    if (!isBorderOnly(node)) {
+      node.style.transition = 'background-color 0.25s ease';
+      node.style.backgroundColor = getLayoutColor(state.mode, state.palette, index);
+    }
+    index++;
+
     for (const child of node.children) {
       colorNode(child);
     }
   }
-  
+
   colorNode(element);
 }
 
-// Reset page elements back to their original styles
+// ─── Clear / Reset ──────────────────────────────────────────────────
+
 function clearAll() {
+  // Restore backgrounds
   const coloredElements = document.querySelectorAll('[data-colorr-bg]');
-  coloredElements.forEach(element => {
-    const originalBg = element.getAttribute('data-colorr-bg');
-    const originalTransition = element.getAttribute('data-colorr-transition');
-    
-    if (originalBg === 'none') {
-      element.style.backgroundColor = '';
-    } else {
-      element.style.backgroundColor = originalBg;
-    }
-    
-    if (originalTransition === 'none') {
-      element.style.transition = '';
-    } else {
-      element.style.transition = originalTransition;
-    }
-    
-    element.removeAttribute('data-colorr-bg');
-    element.removeAttribute('data-colorr-transition');
+  coloredElements.forEach(el => {
+    const origBg = el.getAttribute('data-colorr-bg');
+    const origTransition = el.getAttribute('data-colorr-transition');
+    el.style.backgroundColor = origBg === 'none' ? '' : origBg;
+    el.style.transition = origTransition === 'none' ? '' : origTransition;
+    el.removeAttribute('data-colorr-bg');
+    el.removeAttribute('data-colorr-transition');
   });
-  
+
+  // Restore borders
+  removeOutlines();
+
   state.colorAllActive = false;
-  document.body.classList.remove('colorr-show-outlines');
-  
+  state.outlinesActive = false;
+
   const style = document.getElementById(STYLE_ID);
   if (style) style.remove();
-  
+
+  const outlineStyle = document.getElementById(OUTLINE_STYLE_ID);
+  if (outlineStyle) outlineStyle.remove();
+
   const overlay = document.getElementById('colorr-inspect-overlay');
   if (overlay) overlay.remove();
-  
+
   if (state.inspectActive) {
     toggleInspect(false);
   }
 }
 
-// Toggle features
+// ─── Toggle Functions ───────────────────────────────────────────────
+
 function toggleColorAll(activate) {
   state.colorAllActive = activate;
   if (activate) {
-    if (state.inspectActive) {
-      toggleInspect(false);
-    }
+    if (state.inspectActive) toggleInspect(false);
     applyColorAll();
   } else {
-    clearAll();
+    // Clear only backgrounds, keep outlines if active
+    const coloredElements = document.querySelectorAll('[data-colorr-bg]');
+    coloredElements.forEach(el => {
+      const origBg = el.getAttribute('data-colorr-bg');
+      const origTransition = el.getAttribute('data-colorr-transition');
+      el.style.backgroundColor = origBg === 'none' ? '' : origBg;
+      el.style.transition = origTransition === 'none' ? '' : origTransition;
+      el.removeAttribute('data-colorr-bg');
+      el.removeAttribute('data-colorr-transition');
+    });
   }
 }
 
 function toggleOutlines(activate) {
   state.outlinesActive = activate;
-  injectStyles();
-  document.body.classList.toggle('colorr-show-outlines', activate);
+  if (activate) {
+    applyOutlines();
+  } else {
+    removeOutlines();
+  }
 }
 
-// Mouse and keyboard event handlers for Inspector Mode
+// ─── Inspector Mouse/Keyboard Handlers ──────────────────────────────
+
 function handleMouseMove(e) {
   if (!state.inspectActive) return;
-  
+
   const target = e.target;
-  if (!target || shouldSkipElement(target) || ['HTML', 'BODY'].includes(target.tagName)) {
+  if (!target || shouldSkip(target) || target.tagName === 'HTML' || target.tagName === 'BODY') {
     const overlay = document.getElementById('colorr-inspect-overlay');
     if (overlay) overlay.style.display = 'none';
     return;
   }
-  
+
   const rect = target.getBoundingClientRect();
   const scrollTop = window.scrollY || document.documentElement.scrollTop;
   const scrollLeft = window.scrollX || document.documentElement.scrollLeft;
-  
+
   const overlay = document.getElementById('colorr-inspect-overlay');
   if (overlay) {
     overlay.style.width = `${rect.width}px`;
@@ -301,15 +368,14 @@ function handleMouseMove(e) {
 
 function handleMouseClick(e) {
   if (!state.inspectActive) return;
-  
+
   const target = e.target;
   if (!target || target.id === 'colorr-inspect-overlay') return;
-  
+
   e.preventDefault();
   e.stopPropagation();
-  
+
   colorElementAndDescendants(target);
-  
   chrome.runtime.sendMessage({ action: 'stateUpdated', state }).catch(() => {});
 }
 
@@ -322,9 +388,8 @@ function handleKeyDown(e) {
 
 function toggleInspect(activate) {
   state.inspectActive = activate;
-  
   let overlay = document.getElementById('colorr-inspect-overlay');
-  
+
   if (activate) {
     injectStyles();
     if (!overlay) {
@@ -343,49 +408,45 @@ function toggleInspect(activate) {
   }
 }
 
-// Listen to incoming messages from extension popup or background shortcuts
+// ─── Message Listener ───────────────────────────────────────────────
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getState') {
     sendResponse(state);
     return true;
   }
-  
+
   if (request.action === 'toggle-all' || request.action === 'toggleColorAll') {
-    if (request.palette) {
-      state.palette = request.palette;
-    }
-    if (request.mode) {
-      state.mode = request.mode;
-    }
+    if (request.palette) state.palette = request.palette;
+    if (request.mode) state.mode = request.mode;
     toggleColorAll(!state.colorAllActive);
     sendResponse(state);
     return true;
   }
-  
+
   if (request.action === 'toggle-inspect' || request.action === 'toggleInspect') {
     toggleInspect(!state.inspectActive);
     sendResponse(state);
     return true;
   }
-  
+
   if (request.action === 'toggle-outlines' || request.action === 'toggleOutlines') {
     toggleOutlines(!state.outlinesActive);
     sendResponse(state);
     return true;
   }
-  
+
   if (request.action === 'clear-all' || request.action === 'clearAll') {
     clearAll();
     sendResponse(state);
     return true;
   }
-  
+
   if (request.action === 'setPalette') {
     state.palette = request.palette;
     state.mode = request.mode || state.mode;
-    if (state.colorAllActive) {
-      applyColorAll();
-    }
+    if (state.colorAllActive) applyColorAll();
+    if (state.outlinesActive) applyOutlines();
     sendResponse(state);
     return true;
   }
@@ -393,9 +454,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'setMode') {
     state.mode = request.mode;
     state.palette = request.palette;
-    if (state.colorAllActive) {
-      applyColorAll();
-    }
+    if (state.colorAllActive) applyColorAll();
+    if (state.outlinesActive) applyOutlines();
     sendResponse(state);
     return true;
   }

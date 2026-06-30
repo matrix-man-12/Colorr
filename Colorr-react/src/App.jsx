@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 const isExtension = typeof chrome !== 'undefined' && chrome.tabs !== undefined;
@@ -6,7 +6,7 @@ const isExtension = typeof chrome !== 'undefined' && chrome.tabs !== undefined;
 function App() {
   const [tabId, setTabId] = useState(null);
   const [state, setState] = useState({
-    colorAllActive: false,
+    colorAllActive: true, // Default to active
     inspectActive: false,
     outlinesActive: false,
     mode: 'soft',
@@ -15,7 +15,16 @@ function App() {
   const [unsupportedPage, setUnsupportedPage] = useState(!isExtension);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-  // Initialize state and communicate with tab
+  const sendCommand = useCallback((action, payload = {}) => {
+    if (!tabId || typeof chrome === 'undefined') return;
+    chrome.tabs.sendMessage(tabId, { action, ...payload }, (response) => {
+      if (!chrome.runtime.lastError && response) {
+        setState(response);
+      }
+    });
+  }, [tabId]);
+
+  // Initialize and auto-activate Color All on first open
   useEffect(() => {
     if (!isExtension) return;
 
@@ -36,7 +45,6 @@ function App() {
       }
     });
 
-    // Listen for events sent from content script (e.g. inspector cancel via Esc)
     const handleMessage = (request) => {
       if (request.action === 'stateUpdated' && request.state) {
         setState(request.state);
@@ -46,16 +54,6 @@ function App() {
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
   }, []);
-
-  const sendCommand = (action, payload = {}) => {
-    if (!tabId || typeof chrome === 'undefined') return;
-
-    chrome.tabs.sendMessage(tabId, { action, ...payload }, (response) => {
-      if (!chrome.runtime.lastError && response) {
-        setState(response);
-      }
-    });
-  };
 
   const handleToggleColorAll = () => {
     sendCommand('toggleColorAll', { palette: state.palette, mode: state.mode });
@@ -98,29 +96,30 @@ function App() {
           </svg>
           <h3>Unsupported Page</h3>
           <p>Colorr cannot run on internal browser settings or store pages.</p>
-          <p className="hint">Please navigate to any regular website (e.g. wikipedia.org or your local developer page) and open the extension again.</p>
+          <p className="hint">Please navigate to any regular website and open the extension again.</p>
         </div>
       </div>
     );
   }
 
-  // Define Soft and Dark palettes
+  // Soft Pastels — 6 palettes with 5 preview colors each
   const softPalettes = [
-    { id: 'rainbow', name: 'Soft Rainbow', colors: ['#ffb3ba', '#baffc9', '#bae1ff'] },
-    { id: 'warm', name: 'Warm Pastels', colors: ['#ffb3ba', '#ffdfba', '#ffffba'] },
-    { id: 'cool', name: 'Cool Pastels', colors: ['#baffc9', '#bae1ff', '#e8c4ff'] },
-    { id: 'forest', name: 'Forest Sage', colors: ['#c2f0c2', '#d9f2d9', '#e6f7e6'] },
-    { id: 'sunset', name: 'Sunset Peach', colors: ['#ffc3a0', '#ffafbd', '#ffc0cb'] },
-    { id: 'monochrome', name: 'Monochrome', colors: ['#cfd8dc', '#eceff1', '#f5f7f8'] }
+    { id: 'rainbow', name: 'Soft Rainbow', colors: ['#ffb3ba', '#ffffba', '#baffc9', '#bae1ff', '#e8c4ff'] },
+    { id: 'warm', name: 'Warm Pastels', colors: ['#ff9a9e', '#fecfef', '#ffd1a4', '#ffe8a1', '#ffc3a0'] },
+    { id: 'cool', name: 'Cool Pastels', colors: ['#a1c4fd', '#c2e9fb', '#b5ead7', '#d4bbff', '#e0c3fc'] },
+    { id: 'berry', name: 'Berry Blush', colors: ['#f5b7c5', '#d4a5e5', '#c3b1e1', '#f0b6d6', '#e8a7d0'] },
+    { id: 'tropical', name: 'Tropical Punch', colors: ['#ffd89b', '#f7a5a5', '#a8e6cf', '#81d4fa', '#ffab91'] },
+    { id: 'sunset', name: 'Sunset Peach', colors: ['#ff9a76', '#ffbf87', '#ffc3a0', '#ffafbd', '#ffd1a4'] }
   ];
 
+  // Vibrant & Dark — replaced black-like palettes with vivid alternatives
   const darkPalettes = [
-    { id: 'rainbow-dark', name: 'Neon Rainbow', colors: ['#818cf8', '#f472b6', '#2dd4bf'] },
-    { id: 'cyberpunk', name: 'Cyberpunk', colors: ['#ec4899', '#4f46e5', '#06b6d4'] },
-    { id: 'ocean', name: 'Deep Ocean', colors: ['#1e3a8a', '#1d4ed8', '#0d9488'] },
-    { id: 'forest-dark', name: 'Forest Canopy', colors: ['#064e3b', '#047857', '#14532d'] },
-    { id: 'sunset-dark', name: 'Vibrant Sunset', colors: ['#7c2d12', '#9a3412', '#581c87'] },
-    { id: 'monochrome-dark', name: 'Midnight Slate', colors: ['#0f172a', '#1e293b', '#334155'] }
+    { id: 'rainbow-dark', name: 'Neon Rainbow', colors: ['#818cf8', '#f472b6', '#2dd4bf', '#fbbf24', '#a78bfa'] },
+    { id: 'cyberpunk', name: 'Cyberpunk', colors: ['#ec4899', '#8b5cf6', '#06b6d4', '#fbbf24', '#14b8a6'] },
+    { id: 'sunset-dark', name: 'Vibrant Sunset', colors: ['#f97316', '#ef4444', '#ec4899', '#f59e0b', '#e11d48'] },
+    { id: 'lavender', name: 'Lavender Storm', colors: ['#a78bfa', '#c084fc', '#818cf8', '#e879f9', '#7c3aed'] },
+    { id: 'coral', name: 'Electric Coral', colors: ['#fb7185', '#f43f5e', '#e11d48', '#ff6b6b', '#f97316'] },
+    { id: 'aurora', name: 'Aurora Borealis', colors: ['#34d399', '#60a5fa', '#a78bfa', '#f472b6', '#2dd4bf'] }
   ];
 
   const activePalettes = state.mode === 'dark' ? darkPalettes : softPalettes;
@@ -141,7 +140,7 @@ function App() {
           <button 
             className={`control-btn ${state.colorAllActive ? 'active' : ''}`}
             onClick={handleToggleColorAll}
-            title="Color All Elements (Ctrl+Shift+Period)"
+            title="Color All Elements (Ctrl+Shift+.)"
           >
             <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-4-4-4-4-2 2.4-4 4-3 3.5-3 5.5a7 7 0 0 0 7 7z"/>
@@ -152,7 +151,7 @@ function App() {
           <button 
             className={`control-btn ${state.inspectActive ? 'active' : ''}`}
             onClick={handleToggleInspect}
-            title="Inspect & Color (Ctrl+Shift+Comma)"
+            title="Inspect & Color (Ctrl+Shift+,)"
           >
             <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/>
@@ -168,20 +167,20 @@ function App() {
           <button 
             className={`control-btn ${state.outlinesActive ? 'active' : ''}`}
             onClick={handleToggleOutlines}
-            title="Outline Mode (Ctrl+Shift+Space)"
+            title="Colored Borders (Ctrl+Shift+Space)"
           >
             <svg className="control-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3"/>
-              <line x1="9" y1="3" x2="9" y2="21" strokeDasharray="3 3"/>
-              <line x1="15" y1="3" x2="15" y2="21" strokeDasharray="3 3"/>
-              <line x1="3" y1="9" x2="21" y2="9" strokeDasharray="3 3"/>
-              <line x1="3" y1="15" x2="21" y2="15" strokeDasharray="3 3"/>
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <line x1="9" y1="3" x2="9" y2="21"/>
+              <line x1="15" y1="3" x2="15" y2="21"/>
+              <line x1="3" y1="9" x2="21" y2="9"/>
+              <line x1="3" y1="15" x2="21" y2="15"/>
             </svg>
-            <span>Outlines</span>
+            <span>Borders</span>
           </button>
         </section>
 
-        {/* Sliding Segmented Mode Selector */}
+        {/* Segmented Mode Selector */}
         <section className="mode-toggle-section">
           <div className="mode-segmented-control">
             <button 
@@ -199,7 +198,7 @@ function App() {
           </div>
         </section>
 
-        {/* Dynamic Palette Grid */}
+        {/* Palette Grid */}
         <section className="palette-section">
           <div className="palette-grid">
             {activePalettes.map((p) => (
@@ -248,7 +247,7 @@ function App() {
                 <kbd>Ctrl+Shift+,</kbd>
               </div>
               <div className="shortcut-item">
-                <span>Outline Mode</span>
+                <span>Colored Borders</span>
                 <kbd>Ctrl+Shift+Space</kbd>
               </div>
               <div className="shortcut-item">
@@ -256,20 +255,20 @@ function App() {
                 <kbd>Ctrl+Shift+K</kbd>
               </div>
               <div className="shortcut-item">
-                <span>Cancel Inspect (On Page)</span>
+                <span>Cancel Inspect</span>
                 <kbd>Esc</kbd>
               </div>
             </div>
           )}
         </section>
 
-        {/* Action Buttons */}
+        {/* Reset Button */}
         <button className="reset-button" onClick={handleClearAll}>
           <svg className="reset-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <polyline points="3 3 3 8 8 8" />
           </svg>
-          Reset Layout Styles
+          Reset All
         </button>
       </main>
     </div>
